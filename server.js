@@ -59,5 +59,5 @@ app.get("/", async (req, res) => {
 });
 
 app.listen(PORT, () =>
-  console.log(`iOS-compatible proxy running on http://localhost:${PORT}`)
+console.log(`iOS-compatible proxy running on https://m3u8proxy-2dwu.onrender.com`);
 );
