@@ -1,41 +1,47 @@
 import express from "express";
 import fetch from "node-fetch";
-import cors from "cors";
 
 const app = express();
-const PORT = process.env.PORT || 7860;
+const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Headers required by the source server
+const CUSTOM_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  "Referer": "https://liveboxpro.com/",
+};
 
-// Proxy endpoint: use ?url= for direct m3u8
-app.get("/watch", async (req, res) => {
+app.get("/", async (req, res) => {
   const targetUrl = req.query.url;
-
-  if (!targetUrl) {
-    return res.status(400).send("Missing ?url parameter");
-  }
+  if (!targetUrl) return res.status(400).send("Missing ?url parameter");
 
   try {
-    const response = await fetch(targetUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
-        "Referer": "https://liveboxpro.com/",
-      },
-    });
+    const r = await fetch(targetUrl, { headers: CUSTOM_HEADERS });
+    if (!r.ok) throw new Error(`Upstream error ${r.status}`);
 
-    res.set(
-      "content-type",
-      response.headers.get("content-type") || "application/vnd.apple.mpegurl"
-    );
+    // If it's a playlist (.m3u8), rewrite segment URLs through this proxy
+    if (targetUrl.endsWith(".m3u8")) {
+      let text = await r.text();
+      text = text.replace(
+        /(https?:\/\/[^\s]+)/g,
+        (match) =>
+          `${req.protocol}://${req.get("host")}/?url=${encodeURIComponent(
+            match
+          )}`
+      );
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      return res.send(text);
+    }
 
-    response.body.pipe(res);
-  } catch (err) {
-    console.error("Proxy error:", err);
-    res.status(500).send("Proxy error: " + err.message);
+    // For .ts/.mp4 segments, just stream them
+    res.setHeader("Content-Type", r.headers.get("content-type") || "application/octet-stream");
+    r.body.pipe(res);
+  } catch (e) {
+    console.error(e);
+    res.status(500).send("Proxy error: " + e.message);
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Proxy running on https://m3u8proxy-2dwu.onrender.com`);
+  console.log(`Proxy running on http://localhost:${PORT}`);
 });
